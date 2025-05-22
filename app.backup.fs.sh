@@ -13,10 +13,10 @@
 (( EUID != 0 )) && { echo >&2 'This script should be run as root!'; exit 1; }
 
 # Sources.
-SRC_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd -P )" # Source directory.
-SRC_NAME="$( basename "$( readlink -f "${BASH_SOURCE[0]}" )" )" # Source name.
+SRC_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd -P )"
+SRC_NAME="$( basename "$( readlink -f "${BASH_SOURCE[0]}" )" )"
 # shellcheck source=/dev/null
-. "${SRC_DIR}/${SRC_NAME%.*}.conf" # Loading configuration file.
+. "${SRC_DIR}/${SRC_NAME%.*}.conf"
 
 # Parameters.
 FS_SRC=("${FS_SRC[@]}"); readonly FS_SRC
