@@ -4,7 +4,7 @@
 # Backup files and directories.
 # -------------------------------------------------------------------------------------------------------------------- #
 # @package    Bash
-# @author     Kai Kimera
+# @author     Kai Kimera <mail@kai.kim>
 # @license    MIT
 # @version    0.1.0
 # @link       https://lib.onl/ru/2025/05/302e6636-dc21-5585-9bc9-b8dd757b6ee1/
