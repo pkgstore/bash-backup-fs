@@ -53,6 +53,7 @@ function _tree() {
 function _gpg() {
   local out; out="${1}.gpg"
   local pass; pass="${2}"
+
   gpg --batch --passphrase "${pass}" --symmetric --output "${out}" \
     --s2k-cipher-algo "${ENC_S2K_CIPHER:-AES256}" \
     --s2k-digest-algo "${ENC_S2K_DIGEST:-SHA512}" \
@@ -62,6 +63,7 @@ function _gpg() {
 function _ssl() {
   local out; out="${1}.ssl"
   local pass; pass="${2}"
+
   openssl enc "-${ENC_SSL_CIPHER:-aes-256-cfb}" -out "${out}" -pass "pass:${pass}" \
     -salt -md "${ENC_SSL_DIGEST:-sha512}" -iter "${ENC_SSL_COUNT:-65536}" -pbkdf2
 }
@@ -69,6 +71,7 @@ function _ssl() {
 function _enc() {
   local out; out="${1}"
   local pass; pass="${ENC_PASS}"
+
   if (( "${ENC_ON}" )); then
     case "${ENC_APP}" in
       'gpg') _gpg "${out}" "${pass}" ;;
@@ -83,6 +86,7 @@ function _enc() {
 function _sum() {
   local in; in="${1}"; (( "${ENC_ON}" )) && in="${1}.${ENC_APP}"
   local out; out="${in}.txt"
+
   sha256sum "${in}" | sed 's| .*/|  |g' | tee "${out}" > '/dev/null'
 }
 
@@ -90,6 +94,7 @@ function backup() {
   local ts; ts="$( _timestamp )"
   local tree; tree="${FS_DST}/$( _tree )"
   local file; file="$( hostname -f ).${ts}.tar.xz"
+
   for i in "${!FS_SRC[@]}"; do [[ -e "${FS_SRC[i]}" ]] || unset 'FS_SRC[i]'; done
   [[ ! -d "${tree}" ]] && mkdir -p "${tree}"; cd "${tree}" || _err "Directory '${tree}' not found!"
   tar -cf - "${FS_SRC[@]}" | xz | _enc "${tree}/${file}" && _sum "${tree}/${file}"
@@ -97,11 +102,13 @@ function backup() {
 
 function sync() {
   (( ! "${SYNC_ON}" )) && return 0
+
   local opts; opts=('--archive' '--quiet')
   (( "${SYNC_DEL:-0}" )) && opts+=('--delete')
   (( "${SYNC_RSF:-0}" )) && opts+=('--remove-source-files')
   (( "${SYNC_PED:-0}" )) && opts+=('--prune-empty-dirs')
   (( "${SYNC_CVS:-0}" )) && opts+=('--cvs-exclude')
+
   rsync "${opts[@]}" -e "sshpass -p '${SYNC_PASS}' ssh -p ${SYNC_PORT:-22}" \
     "${FS_DST}/" "${SYNC_USER:-root}@${SYNC_HOST}:${SYNC_DST}/"
 }
