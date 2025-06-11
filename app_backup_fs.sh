@@ -39,11 +39,11 @@ SYNC_DST="${SYNC_DST:?}"; readonly SYNC_DST
 # -------------------------------------------------------------------------------------------------------------------- #
 
 function _err() {
-  echo >&2 "[$( date +'%Y-%m-%dT%H:%M:%S%z' )]: $*"; exit 1
+  echo >&2 "[$( date '+%FT%H:%M:%S%z' )]: $*"; exit 1
 }
 
 function _timestamp() {
-  date -u '+%Y-%m-%d.%H-%M-%S'
+  date -u '+%F.%H-%M-%S'
 }
 
 function _tree() {
