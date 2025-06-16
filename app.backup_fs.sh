@@ -90,7 +90,7 @@ function _sum() {
   sha256sum "${in}" | sed 's| .*/|  |g' | tee "${out}" > '/dev/null'
 }
 
-function backup() {
+function fs_backup() {
   local ts; ts="$( _timestamp )"
   local tree; tree="${FS_DST}/$( _tree )"
   local file; file="$( hostname -f ).${ts}.tar.xz"
@@ -100,7 +100,7 @@ function backup() {
   tar -cf - "${FS_SRC[@]}" | xz | _enc "${tree}/${file}" && _sum "${tree}/${file}"
 }
 
-function sync() {
+function fs_sync() {
   (( ! "${SYNC_ON}" )) && return 0
 
   local opts; opts=('--archive' '--quiet')
@@ -113,11 +113,11 @@ function sync() {
     "${FS_DST}/" "${SYNC_USER:-root}@${SYNC_HOST}:${SYNC_DST}/"
 }
 
-function clean() {
+function fs_clean() {
   find "${FS_DST}" -type 'f' -mtime "+${FS_DAYS:-30}" -print0 | xargs -0 rm -f --
   find "${FS_DST}" -mindepth 1 -type 'd' -not -name 'lost+found' -empty -delete
 }
 
 function main() {
-  backup && sync && clean
+  fs_backup && fs_sync && fs_clean
 }; main "$@"
