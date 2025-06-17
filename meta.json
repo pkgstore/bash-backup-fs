@@ -1,0 +1,16 @@
+{
+  "file": [
+    {
+      "name": "app.backup_fs.conf",
+      "path": "/root/apps/backup"
+    },
+    {
+      "name": "app.backup_fs.sh",
+      "path": "/root/apps/backup"
+    },
+    {
+      "name": "job.backup_fs",
+      "path": "/root/apps/backup"
+    }
+  ]
+}
