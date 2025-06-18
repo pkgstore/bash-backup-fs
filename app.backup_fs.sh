@@ -38,7 +38,7 @@ SYNC_DST="${SYNC_DST:?}"; readonly SYNC_DST
 # -----------------------------------------------------< SCRIPT >----------------------------------------------------- #
 # -------------------------------------------------------------------------------------------------------------------- #
 
-function _err() {
+function _error() {
   echo >&2 "[$( date '+%FT%H:%M:%S%z' )]: $*"; exit 1
 }
 
@@ -76,7 +76,7 @@ function _enc() {
     case "${ENC_APP}" in
       'gpg') _gpg "${out}" "${pass}" ;;
       'ssl') _ssl "${out}" "${pass}" ;;
-      *) _err 'ENC_APP does not exist!' ;;
+      *) _error 'ENC_APP does not exist!' ;;
     esac
   else
     cat < '/dev/stdin' > "${out}"
@@ -96,7 +96,7 @@ function fs_backup() {
   local file; file="$( hostname -f ).${ts}.tar.xz"
 
   for i in "${!FS_SRC[@]}"; do [[ -e "${FS_SRC[i]}" ]] || unset 'FS_SRC[i]'; done
-  [[ ! -d "${tree}" ]] && mkdir -p "${tree}"; cd "${tree}" || _err "Directory '${tree}' not found!"
+  [[ ! -d "${tree}" ]] && mkdir -p "${tree}"; cd "${tree}" || _error "Directory '${tree}' not found!"
   tar -cf - "${FS_SRC[@]}" | xz | _enc "${tree}/${file}" && _sum "${tree}/${file}"
 }
 
