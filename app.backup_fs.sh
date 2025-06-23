@@ -33,21 +33,100 @@ SYNC_HOST="${SYNC_HOST:?}"; readonly SYNC_HOST
 SYNC_USER="${SYNC_USER:?}"; readonly SYNC_USER
 SYNC_PASS="${SYNC_PASS:?}"; readonly SYNC_PASS
 SYNC_DST="${SYNC_DST:?}"; readonly SYNC_DST
+MAIL_ON="${MAIL_ON:?}"; readonly MAIL_ON
+MAIL_FROM="${MAIL_FROM:?}"; readonly MAIL_FROM
+MAIL_TO=("${MAIL_TO[@]:?}"); readonly MAIL_TO
+GITLAB_ON="${GITLAB_ON:?}"; readonly GITLAB_ON
+GITLAB_API="${GITLAB_API:?}"; readonly GITLAB_API
+GITLAB_PROJECT="${GITLAB_PROJECT:?}"; readonly GITLAB_PROJECT
+GITLAB_TOKEN="${GITLAB_TOKEN:?}"; readonly GITLAB_TOKEN
 
 # -------------------------------------------------------------------------------------------------------------------- #
 # -----------------------------------------------------< SCRIPT >----------------------------------------------------- #
 # -------------------------------------------------------------------------------------------------------------------- #
 
-function _error() {
-  echo >&2 "[$( date '+%FT%T%z' )]: $*"; exit 1
+function _uuid() {
+  dmidecode -s 'system-uuid'
 }
 
-function _timestamp() {
-  date -u '+%F.%H-%M-%S'
+function _host() {
+  local type; type="${1:-}"
+
+  case "${type}" in
+    'f') hostname -f ;;
+    'i') hostname -I ;;
+    *) hostname ;;
+  esac
+}
+
+function _date() {
+  local type; type="${1:-}"
+
+  case "${type}" in
+    'Y') date -u '+%Y' ;;
+    'm') date -u '+%m' ;;
+    'd') date -u '+%d' ;;
+    'id') date -u '+%s' ;;
+    'ts') date -u '+%F.%H-%M-%S' ;;
+    *) date '+%FT%T%:z' ;;
+  esac
+}
+
+function _msg() {
+  local type; type="${1:-}"
+  local msg; msg="$( _date ) $( _host 'f' ) ${SRC_NAME}: ${2:?}"
+
+  case "${type}" in
+    'error') echo >&2 "${msg}"; exit 1 ;;
+    'success') echo "${msg}" ;;
+    *) return 0 ;;
+  esac
 }
 
 function _tree() {
-  echo "$( date -u '+%Y' )/$( date -u '+%m' )/$( date -u '+%d' )"
+  echo "$( _date 'Y' )/$( _date 'm' )/$( _date 'd' )"
+}
+
+function _mail() {
+  (( ! "${MAIL_ON}" )) && return 0
+
+  local id; id="#id:$( _host 'f' ):$( _uuid )"
+  local type; type="#type:backup:${1}"
+  local date; date="#date:$( _date )"
+  local ip; ip="#ip:$( _host 'i' )"
+  local subj; subj="[$( _host 'f' )] ${SRC_NAME}: ${2}"
+  local body; body="${3}"
+  local opts; opts=('-S' 'v15-compat' '-s' "${subj}" '-r' "${MAIL_FROM}")
+  [[ "${MAIL_SMTP_SERVER:-}" ]] && opts+=(
+    '-S' "mta=${MAIL_SMTP_SERVER} smtp-use-starttls"
+    '-S' "smtp-auth=${MAIL_SMTP_AUTH:-none}"
+  )
+  opts+=('-.')
+
+  printf "%s\n\n-- \n%s\n%s\n%s\n%s" "${body}" "${id^^}" "${ip^^}" "${date^^}" "${type^^}" \
+    | s-nail "${opts[@]}" "${MAIL_TO[@]}"
+}
+
+function _gitlab() {
+  (( ! "${GITLAB_ON}" )) && return 0
+
+  local label; label="${1}"
+  local title; title="[$( _host 'f' )] ${SRC_NAME}: ${2}"
+  local description; description="${3}"
+  local id; id="#id:$( _host 'f' ):$( _uuid )"
+  local ip; ip="#ip:$( _host 'i' )"
+  local date; date="#date:$( _date )"
+  local type; type="#type:backup:${1}"
+
+  curl "${GITLAB_API}/projects/${GITLAB_PROJECT}/issues" -X 'POST' -kfsLo '/dev/null' \
+    -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" -H 'Content-Type: application/json' \
+    -d @- <<EOF
+{
+  "title": "${title}",
+  "description": "${description}\n\n- \`${id^^}\`\n- \`${ip^^}\`\n- \`${date^^}\`\n- \`${type^^}\`",
+  "labels": "backup,database,${label}"
+}
+EOF
 }
 
 function _gpg() {
@@ -76,7 +155,7 @@ function _enc() {
     case "${ENC_APP}" in
       'gpg') _gpg "${out}" "${pass}" ;;
       'ssl') _ssl "${out}" "${pass}" ;;
-      *) _error 'ENC_APP does not exist!' ;;
+      *) _msg 'error' 'ENC_APP does not exist!' ;;
     esac
   else
     cat < '/dev/stdin' > "${out}"
@@ -90,14 +169,39 @@ function _sum() {
   sha256sum "${in}" | sed 's| .*/|  |g' | tee "${out}" > '/dev/null'
 }
 
+function fs_check() {
+  local file; file='.backup_fs'
+  local msg; msg=()
+
+  if [[ ! -f "${DB_DST}/${file}" ]]; then
+    msg=(
+      'error'
+      "File '${file}' not found!"
+      "File '${file}' not found! Please check the remote storage status!"
+    ); _mail "${msg[@]}"; _gitlab "${msg[@]}"; _msg 'error' "${msg[2]}"
+  fi; return 0
+}
+
 function fs_backup() {
-  local ts; ts="$( _timestamp )"
+  local ts; ts="$( _date 'ts' )"
   local tree; tree="${FS_DST}/$( _tree )"
-  local file; file="$( hostname -f ).${ts}.tar.xz"
+  local file; file="$( _host 'f' ).${ts}.tar.xz"
 
   for i in "${!FS_SRC[@]}"; do [[ -e "${FS_SRC[i]}" ]] || unset 'FS_SRC[i]'; done
-  [[ ! -d "${tree}" ]] && mkdir -p "${tree}"; cd "${tree}" || _error "Directory '${tree}' not found!"
-  tar -cf - "${FS_SRC[@]}" | xz | _enc "${tree}/${file}" && _sum "${tree}/${file}"
+  [[ ! -d "${tree}" ]] && mkdir -p "${tree}"; cd "${tree}" || _msg 'error' "Directory '${tree}' not found!"
+  if tar -cf - "${FS_SRC[@]}" | xz | _enc "${tree}/${file}" && _sum "${tree}/${file}"; then
+    msg=(
+      'success'
+      "Backup of files ('${file}') completed successfully"
+      "Backup of files ('${file}') completed successfully. File '${tree}/${file}' received."
+    ); _mail "${msg[@]}"; _gitlab "${msg[@]}"; _msg 'success' "${msg[2]}"
+  else
+    msg=(
+      'error'
+      "Error backing up files ('${file}')"
+      "Error backing up files ('${file}')! File '${tree}/${file}' not received or corrupted!"
+    ); _mail "${msg[@]}"; _gitlab "${msg[@]}"; _msg 'error' "${msg[2]}"
+  fi
 }
 
 function fs_sync() {
@@ -109,8 +213,20 @@ function fs_sync() {
   (( "${SYNC_PED:-0}" )) && opts+=('--prune-empty-dirs')
   (( "${SYNC_CVS:-0}" )) && opts+=('--cvs-exclude')
 
-  rsync "${opts[@]}" -e "sshpass -p '${SYNC_PASS}' ssh -p ${SYNC_PORT:-22}" \
-    "${FS_DST}/" "${SYNC_USER:-root}@${SYNC_HOST}:${SYNC_DST}/"
+  if rsync "${opts[@]}" -e "sshpass -p '${SYNC_PASS}' ssh -p ${SYNC_PORT:-22}" \
+    "${FS_DST}/" "${SYNC_USER:-root}@${SYNC_HOST}:${SYNC_DST}/"; then
+    msg=(
+      'success'
+      'Synchronization with remote storage completed successfully'
+      'Synchronization with remote storage completed successfully.'
+    ); _mail "${msg[@]}"; _msg 'success' "${msg[2]}"
+  else
+    msg=(
+      'error'
+      'Error synchronizing with remote storage'
+      'Error synchronizing with remote storage!'
+    ); _mail "${msg[@]}"; _msg 'error' "${msg[2]}"
+  fi
 }
 
 function fs_clean() {
@@ -119,5 +235,5 @@ function fs_clean() {
 }
 
 function main() {
-  fs_backup && fs_sync && fs_clean
+  fs_check && fs_backup && fs_sync && fs_clean
 }; main "$@"
