@@ -25,7 +25,7 @@ SRC_NAME="$( basename "$( readlink -f "${BASH_SOURCE[0]}" )" )"
 # Parameters.
 FS_SRC=("${FS_SRC[@]}"); readonly FS_SRC
 FS_DST="${FS_DST:?}"; readonly FS_DST
-FS_TREE="${FS_TREE:?}"; readonly FS_TREE
+FS_TPL="${FS_TPL:?}"; readonly FS_TPL
 ENC_ON="${ENC_ON:?}"; readonly ENC_ON
 ENC_APP="${ENC_APP:?}"; readonly ENC_APP
 ENC_PASS="${ENC_PASS:?}"; readonly ENC_PASS
@@ -140,36 +140,32 @@ function _sum() {
 }
 
 function fs_check() {
-  local file; file="${FS_DST}/.backup_fs"
-  local msg; msg=()
-
-  if [[ ! -f "${file}" ]]; then
-    msg=(
-      'error'
-      "File '${file}' not found!"
-      "File '${file}' not found! Please check the remote storage status!"
-    ); _mail "${msg[@]}"; _gitlab "${msg[@]}"; _msg 'error' "${msg[2]}"
-  fi; return 0
+  local file; file="${FS_DST}/.backup_fs"; [[ -f "${file}" ]] && return 0
+  local msg; msg=(
+    'error'
+    "File '${file}' not found!"
+    "File '${file}' not found! Please check the remote storage status!"
+  ); _mail "${msg[@]}"; _gitlab "${msg[@]}"; _msg 'error' "${msg[2]}"
 }
 
 function fs_backup() {
   local ts; ts="$( date -u '+%F.%H-%M-%S' )"
-  local tree; tree="${FS_DST}/${FS_TREE}"
+  local dirs; dirs="${FS_DST}/${FS_TPL}"
   local file; file="$( hostname -f ).${ts}.tar.xz"
 
   for i in "${!FS_SRC[@]}"; do [[ -e "${FS_SRC[i]}" ]] || unset 'FS_SRC[i]'; done
-  [[ ! -d "${tree}" ]] && mkdir -p "${tree}"; cd "${tree}" || _msg 'error' "Directory '${tree}' not found!"
-  if tar -cf - "${FS_SRC[@]}" | xz | _enc "${tree}/${file}" && _sum "${tree}/${file}"; then
+  [[ ! -d "${dirs}" ]] && mkdir -p "${dirs}"; cd "${dirs}" || _msg 'error' "Directory '${dirs}' not found!"
+  if tar -cf - "${FS_SRC[@]}" | xz | _enc "${dirs}/${file}" && _sum "${dirs}/${file}"; then
     msg=(
       'success'
       "Backup of files ('${file}') completed successfully"
-      "Backup of files ('${file}') completed successfully. File '${tree}/${file}' received."
+      "Backup of files ('${file}') completed successfully. File '${dirs}/${file}' received."
     ); _mail "${msg[@]}"; _gitlab "${msg[@]}"; _msg 'success' "${msg[2]}"
   else
     msg=(
       'error'
       "Error backing up files ('${file}')"
-      "Error backing up files ('${file}')! File '${tree}/${file}' not received or corrupted!"
+      "Error backing up files ('${file}')! File '${dirs}/${file}' not received or corrupted!"
     ); _mail "${msg[@]}"; _gitlab "${msg[@]}"; _msg 'error' "${msg[2]}"
   fi
 }
@@ -200,9 +196,8 @@ function fs_sync() {
 }
 
 function fs_clean() {
-  [[ "${FS_DAYS:-}" ]] && return 0
-  find "${FS_DST}" -type 'f' -mtime "+${FS_DAYS:-30}" -print0 | xargs -0 rm -f --
   find "${FS_DST}" -mindepth 1 -type 'd' -not -name 'lost+found' -empty -delete
+  [[ "${FS_DAYS:-}" ]] || find "${FS_DST}" -type 'f' -mtime "+${FS_DAYS:-30}" -print0 | xargs -0 rm -f --
 }
 
 function main() {
