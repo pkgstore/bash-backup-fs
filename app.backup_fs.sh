@@ -171,7 +171,7 @@ function fs_backup() {
 }
 
 function fs_sync() {
-  (( ! "${SYNC_ON:-0}" )) && return 0
+  (( ! "${SYNC_ON}" )) && return 0
 
   local opts; opts=('--archive' '--quiet')
   (( "${SYNC_DEL:-0}" )) && opts+=('--delete')
