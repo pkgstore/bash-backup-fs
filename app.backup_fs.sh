@@ -29,11 +29,11 @@ FS_TPL="${FS_TPL:?}"; readonly FS_TPL
 ENC_ON="${ENC_ON:?}"; readonly ENC_ON
 ENC_APP="${ENC_APP:?}"; readonly ENC_APP
 ENC_PASS="${ENC_PASS:?}"; readonly ENC_PASS
-SYNC_ON="${SYNC_ON:?}"; readonly SYNC_ON
-SYNC_HOST="${SYNC_HOST:?}"; readonly SYNC_HOST
-SYNC_USER="${SYNC_USER:?}"; readonly SYNC_USER
-SYNC_PASS="${SYNC_PASS:?}"; readonly SYNC_PASS
-SYNC_DST="${SYNC_DST:?}"; readonly SYNC_DST
+RSYNC_ON="${RSYNC_ON:?}"; readonly RSYNC_ON
+RSYNC_HOST="${RSYNC_HOST:?}"; readonly RSYNC_HOST
+RSYNC_USER="${RSYNC_USER:?}"; readonly RSYNC_USER
+RSYNC_PASS="${RSYNC_PASS:?}"; readonly RSYNC_PASS
+RSYNC_DST="${RSYNC_DST:?}"; readonly RSYNC_DST
 MAIL_ON="${MAIL_ON:?}"; readonly MAIL_ON
 MAIL_FROM="${MAIL_FROM:?}"; readonly MAIL_FROM
 MAIL_TO=("${MAIL_TO[@]:?}"); readonly MAIL_TO
@@ -41,6 +41,13 @@ GITLAB_ON="${GITLAB_ON:?}"; readonly GITLAB_ON
 GITLAB_API="${GITLAB_API:?}"; readonly GITLAB_API
 GITLAB_PROJECT="${GITLAB_PROJECT:?}"; readonly GITLAB_PROJECT
 GITLAB_TOKEN="${GITLAB_TOKEN:?}"; readonly GITLAB_TOKEN
+
+# Variables.
+LOG_MOUNT="${SRC_DIR}/log.fs_mount"
+LOG_CHECK="${SRC_DIR}/log.fs_check"
+LOG_BACKUP="${SRC_DIR}/log.fs_backup"
+LOG_SYNC="${SRC_DIR}/log.fs_sync"
+LOG_CLEAN="${SRC_DIR}/log.fs_clean"
 
 # -------------------------------------------------------------------------------------------------------------------- #
 # -----------------------------------------------------< SCRIPT >----------------------------------------------------- #
@@ -53,7 +60,7 @@ function _msg() {
   case "${type}" in
     'error') echo "${msg}" >&2; exit 1 ;;
     'success') echo "${msg}" ;;
-    *) return 1 ;;
+    *) exit 1 ;;
   esac
 }
 
@@ -100,35 +107,26 @@ EOF
 }
 
 function _gpg() {
-  local out; out="${1}.gpg"
-  local pass; pass="${2}"
-
-  gpg --batch --passphrase "${pass}" --symmetric --output "${out}" \
+  gpg --batch --passphrase "${2}" --symmetric --output "${1}.gpg" \
     --s2k-cipher-algo "${ENC_S2K_CIPHER:-AES256}" \
     --s2k-digest-algo "${ENC_S2K_DIGEST:-SHA512}" \
     --s2k-count "${ENC_S2K_COUNT:-65536}"
 }
 
 function _ssl() {
-  local out; out="${1}.ssl"
-  local pass; pass="${2}"
-
-  openssl enc "-${ENC_SSL_CIPHER:-aes-256-cfb}" -out "${out}" -pass "pass:${pass}" \
+  openssl enc "-${ENC_SSL_CIPHER:-aes-256-cfb}" -out "${1}.ssl" -pass "pass:${2}" \
     -salt -md "${ENC_SSL_DIGEST:-sha512}" -iter "${ENC_SSL_COUNT:-65536}" -pbkdf2
 }
 
 function _enc() {
-  local out; out="${1}"
-  local pass; pass="${ENC_PASS}"
-
   if (( "${ENC_ON}" )); then
     case "${ENC_APP}" in
-      'gpg') _gpg "${out}" "${pass}" ;;
-      'ssl') _ssl "${out}" "${pass}" ;;
+      'gpg') _gpg "${1}" "${ENC_PASS}" ;;
+      'ssl') _ssl "${1}" "${ENC_PASS}" ;;
       *) _msg 'error' 'ENC_APP does not exist!' ;;
     esac
   else
-    cat < '/dev/stdin' > "${out}"
+    cat < '/dev/stdin' > "${1}"
   fi
 }
 
@@ -137,6 +135,33 @@ function _sum() {
   local out; out="${in}.txt"
 
   sha256sum "${in}" | sed 's| .*/|  |g' | tee "${out}" > '/dev/null'
+}
+
+function _ssh() {
+  echo "${SSH_PASS}" | sshfs "${SSH_USER:-root}@${SSH_HOST}:/${1}" "${2}" -o 'password_stdin'
+}
+
+function _rsync() {
+  local opts; opts=('--archive' '--quiet')
+  (( "${RSYNC_DEL:-0}" )) && opts+=('--delete')
+  (( "${RSYNC_RSF:-0}" )) && opts+=('--remove-source-files')
+  (( "${RSYNC_PED:-0}" )) && opts+=('--prune-empty-dirs')
+  (( "${RSYNC_CVS:-0}" )) && opts+=('--cvs-exclude')
+
+  rsync "${opts[@]}" -e "sshpass -p '${RSYNC_PASS}' ssh -p ${RSYNC_PORT:-22}" \
+    "${1}/" "${RSYNC_USER:-root}@${RSYNC_HOST}:${2}/"
+}
+
+function fs_mount() {
+  (( ! "${SSH_ON}" )) && return 0
+
+  local msg; msg=(
+    'error'
+    'Error mounting SSH FS!'
+    "Error mounting SSH FS to '${SSH_MNT}'!"
+  )
+
+  _ssh "${SSH_DST}" "${SSH_MNT}" || { _mail "${msg[@]}"; _gitlab "${msg[@]}"; _msg 'error' "${msg[2]}"; }
 }
 
 function fs_check() {
@@ -149,50 +174,38 @@ function fs_check() {
 }
 
 function fs_backup() {
-  local ts; ts="$( date -u '+%F.%H-%M-%S' )"
-  local dirs; dirs="${FS_DST}/${FS_TPL}"
+  local ts; ts="$( date -u '+%m.%d-%H' )"
+  local tpl; tpl="${FS_DST}/${FS_TPL}"
   local file; file="$( hostname -f ).${ts}.tar.xz"
+  local msg; msg=()
 
   for i in "${!FS_SRC[@]}"; do [[ -e "${FS_SRC[i]}" ]] || unset 'FS_SRC[i]'; done
-  [[ ! -d "${dirs}" ]] && mkdir -p "${dirs}"; cd "${dirs}" || _msg 'error' "Directory '${dirs}' not found!"
-  if tar -cf - "${FS_SRC[@]}" | xz | _enc "${dirs}/${file}" && _sum "${dirs}/${file}"; then
+  [[ ! -d "${tpl}" ]] && mkdir -p "${tpl}"; cd "${tpl}" || _msg 'error' "Directory '${tpl}' not found!"
+  if tar -cf - "${FS_SRC[@]}" | xz | _enc "${tpl}/${file}" && _sum "${tpl}/${file}"; then
     msg=(
       'success'
       "Backup of files ('${file}') completed successfully"
-      "Backup of files ('${file}') completed successfully. File '${dirs}/${file}' received."
+      "Backup of files ('${file}') completed successfully. File '${tpl}/${file}' received."
     ); _mail "${msg[@]}"; _gitlab "${msg[@]}"; _msg 'success' "${msg[2]}"
   else
     msg=(
       'error'
       "Error backing up files ('${file}')"
-      "Error backing up files ('${file}')! File '${dirs}/${file}' not received or corrupted!"
+      "Error backing up files ('${file}')! File '${tpl}/${file}' not received or corrupted!"
     ); _mail "${msg[@]}"; _gitlab "${msg[@]}"; _msg 'error' "${msg[2]}"
   fi
 }
 
 function fs_sync() {
-  (( ! "${SYNC_ON}" )) && return 0
+  (( ! "${RSYNC_ON}" )) && return 0
 
-  local opts; opts=('--archive' '--quiet')
-  (( "${SYNC_DEL:-0}" )) && opts+=('--delete')
-  (( "${SYNC_RSF:-0}" )) && opts+=('--remove-source-files')
-  (( "${SYNC_PED:-0}" )) && opts+=('--prune-empty-dirs')
-  (( "${SYNC_CVS:-0}" )) && opts+=('--cvs-exclude')
+  local msg; msg=(
+    'error'
+    'Error synchronizing with remote storage'
+    'Error synchronizing with remote storage!'
+  )
 
-  if rsync "${opts[@]}" -e "sshpass -p '${SYNC_PASS}' ssh -p ${SYNC_PORT:-22}" \
-    "${FS_DST}/" "${SYNC_USER:-root}@${SYNC_HOST}:${SYNC_DST}/"; then
-    msg=(
-      'success'
-      'Synchronization with remote storage completed successfully'
-      'Synchronization with remote storage completed successfully.'
-    ); _mail "${msg[@]}"; _msg 'success' "${msg[2]}"
-  else
-    msg=(
-      'error'
-      'Error synchronizing with remote storage'
-      'Error synchronizing with remote storage!'
-    ); _mail "${msg[@]}"; _msg 'error' "${msg[2]}"
-  fi
+  _rsync "${FS_DST}" "${RSYNC_DST}" || { _mail "${msg[@]}"; _gitlab "${msg[@]}"; _msg 'error' "${msg[2]}"; }
 }
 
 function fs_clean() {
@@ -201,5 +214,9 @@ function fs_clean() {
 }
 
 function main() {
-  fs_check && fs_backup && fs_sync && fs_clean
+  { fs_mount 2>&1 | tee "${LOG_MOUNT}"; } \
+    && { fs_check 2>&1 | tee "${LOG_CHECK}"; } \
+    && { fs_backup 2>&1 | tee "${LOG_BACKUP}"; } \
+    && { fs_sync 2>&1 | tee "${LOG_SYNC}"; } \
+    && { fs_clean 2>&1 | tee "${LOG_CLEAN}"; }
 }; main "$@"
