@@ -29,6 +29,12 @@ FS_TPL="${FS_TPL:?}"; readonly FS_TPL
 ENC_ON="${ENC_ON:?}"; readonly ENC_ON
 ENC_APP="${ENC_APP:?}"; readonly ENC_APP
 ENC_PASS="${ENC_PASS:?}"; readonly ENC_PASS
+SSH_ON="${SSH_ON:?}"; readonly SSH_ON
+SSH_HOST="${SSH_HOST:?}"; readonly SSH_HOST
+SSH_USER="${SSH_USER:?}"; readonly SSH_USER
+SSH_PASS="${SSH_PASS:?}"; readonly SSH_PASS
+SSH_DST="${SSH_DST:?}"; readonly SSH_DST
+SSH_MNT="${SSH_MNT:?}"; readonly SSH_MNT
 RSYNC_ON="${RSYNC_ON:?}"; readonly RSYNC_ON
 RSYNC_HOST="${RSYNC_HOST:?}"; readonly RSYNC_HOST
 RSYNC_USER="${RSYNC_USER:?}"; readonly RSYNC_USER
@@ -131,10 +137,9 @@ function _enc() {
 }
 
 function _sum() {
-  local in; in="${1}"; (( "${ENC_ON}" )) && in="${1}.${ENC_APP}"
-  local out; out="${in}.txt"
+  local f; f="${1}"; (( "${ENC_ON}" )) && f="${1}.${ENC_APP}"
 
-  sha256sum "${in}" | sed 's| .*/|  |g' | tee "${out}" > '/dev/null'
+  sha256sum "${f}" | sed 's| .*/|  |g' | tee "${f}.txt" > '/dev/null'
 }
 
 function _ssh() {
@@ -175,23 +180,23 @@ function fs_check() {
 
 function fs_backup() {
   local ts; ts="$( date -u '+%m.%d-%H' )"
-  local tpl; tpl="${FS_DST}/${FS_TPL}"
+  local dst; dst="${FS_DST}/${FS_TPL}"
   local file; file="$( hostname -f ).${ts}.tar.xz"
   local msg; msg=()
 
   for i in "${!FS_SRC[@]}"; do [[ -e "${FS_SRC[i]}" ]] || unset 'FS_SRC[i]'; done
-  [[ ! -d "${tpl}" ]] && mkdir -p "${tpl}"; cd "${tpl}" || _msg 'error' "Directory '${tpl}' not found!"
-  if tar -cf - "${FS_SRC[@]}" | xz | _enc "${tpl}/${file}" && _sum "${tpl}/${file}"; then
+  [[ ! -d "${dst}" ]] && mkdir -p "${dst}"; cd "${dst}" || _msg 'error' "Directory '${dst}' not found!"
+  if tar -cf - "${FS_SRC[@]}" | xz | _enc "${dst}/${file}" && _sum "${dst}/${file}"; then
     msg=(
       'success'
       "Backup of files ('${file}') completed successfully"
-      "Backup of files ('${file}') completed successfully. File '${tpl}/${file}' received."
+      "Backup of files ('${file}') completed successfully. File '${dst}/${file}' received."
     ); _mail "${msg[@]}"; _gitlab "${msg[@]}"; _msg 'success' "${msg[2]}"
   else
     msg=(
       'error'
       "Error backing up files ('${file}')"
-      "Error backing up files ('${file}')! File '${tpl}/${file}' not received or corrupted!"
+      "Error backing up files ('${file}')! File '${dst}/${file}' not received or corrupted!"
     ); _mail "${msg[@]}"; _gitlab "${msg[@]}"; _msg 'error' "${msg[2]}"
   fi
 }
