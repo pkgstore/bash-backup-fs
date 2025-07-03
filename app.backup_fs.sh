@@ -182,23 +182,16 @@ function fs_backup() {
   local ts; ts="$( date -u '+%m.%d-%H' )"
   local dst; dst="${FS_DST}/${FS_TPL}"
   local file; file="$( hostname -f ).${ts}.tar.xz"
-  local msg; msg=()
+  local msg; msg=(
+    'error'
+    "Error backing up files ('${file}')"
+    "Error backing up files ('${file}')! File '${dst}/${file}' not received or corrupted!"
+  )
 
   for i in "${!FS_SRC[@]}"; do [[ -e "${FS_SRC[i]}" ]] || unset 'FS_SRC[i]'; done
   [[ ! -d "${dst}" ]] && mkdir -p "${dst}"; cd "${dst}" || _msg 'error' "Directory '${dst}' not found!"
-  if tar -cf - "${FS_SRC[@]}" | xz | _enc "${dst}/${file}" && _sum "${dst}/${file}"; then
-    msg=(
-      'success'
-      "Backup of files ('${file}') completed successfully"
-      "Backup of files ('${file}') completed successfully. File '${dst}/${file}' received."
-    ); _mail "${msg[@]}"; _gitlab "${msg[@]}"; _msg 'success' "${msg[2]}"
-  else
-    msg=(
-      'error'
-      "Error backing up files ('${file}')"
-      "Error backing up files ('${file}')! File '${dst}/${file}' not received or corrupted!"
-    ); _mail "${msg[@]}"; _gitlab "${msg[@]}"; _msg 'error' "${msg[2]}"
-  fi
+  { tar -cf - "${FS_SRC[@]}" | xz | _enc "${dst}/${file}" && _sum "${dst}/${file}"; } \
+    || _mail "${msg[@]}"; _gitlab "${msg[@]}"; _msg 'error' "${msg[2]}"
 }
 
 function fs_sync() {
