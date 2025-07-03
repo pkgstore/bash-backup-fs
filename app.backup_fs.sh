@@ -54,20 +54,18 @@ LOG_CHECK="${SRC_DIR}/log.check"
 LOG_BACKUP="${SRC_DIR}/log.backup"
 LOG_SYNC="${SRC_DIR}/log.sync"
 LOG_CLEAN="${SRC_DIR}/log.clean"
+LOG_TS="$( date '+%FT%T%:z' ) $( hostname -f ) ${SRC_NAME}"
 
 # -------------------------------------------------------------------------------------------------------------------- #
 # -----------------------------------------------------< SCRIPT >----------------------------------------------------- #
 # -------------------------------------------------------------------------------------------------------------------- #
 
-function _msg() {
-  local type; type="${1}"
-  local msg; msg="$( date '+%FT%T%:z' ) $( hostname -f ) ${SRC_NAME}: ${2}"
+function _error() {
+  echo "${LOG_TS}: $*" >&2; exit 1
+}
 
-  case "${type}" in
-    'error') echo "${msg}" >&2; exit 1 ;;
-    'success') echo "${msg}" ;;
-    *) exit 1 ;;
-  esac
+function _success() {
+  echo "${LOG_TS}: $*" >&2
 }
 
 function _mail() {
@@ -112,6 +110,17 @@ function _gitlab() {
 EOF
 }
 
+function _msg() {
+  _mail "${1}" "${2}" "${3}"
+  _gitlab "${1}" "${2}" "${3}"
+
+  case "${1}" in
+    'error') _error "${3}" ;;
+    'success') _success "${3}" ;;
+    *) _error "'MSG_TYPE' does not exist!" ;;
+  esac
+}
+
 function _gpg() {
   gpg --batch --passphrase "${2}" --symmetric --output "${1}.gpg" \
     --s2k-cipher-algo "${ENC_S2K_CIPHER:-AES256}" \
@@ -129,7 +138,7 @@ function _enc() {
     case "${ENC_APP}" in
       'gpg') _gpg "${1}" "${ENC_PASS}" ;;
       'ssl') _ssl "${1}" "${ENC_PASS}" ;;
-      *) _msg 'error' 'ENC_APP does not exist!' ;;
+      *) _error 'ENC_APP does not exist!' ;;
     esac
   else
     cat < '/dev/stdin' > "${1}"
@@ -166,7 +175,7 @@ function fs_mount() {
     "Error mounting SSH FS to '${SSH_MNT}'!"
   )
 
-  _ssh "${SSH_DST}" "${SSH_MNT}" || { _mail "${msg[@]}"; _gitlab "${msg[@]}"; _msg "${msg[0]}" "${msg[2]}"; }
+  _ssh "${SSH_DST}" "${SSH_MNT}" || _msg "${msg[@]}"
 }
 
 function fs_check() {
@@ -175,7 +184,7 @@ function fs_check() {
     'error'
     "File '${file}' not found!"
     "File '${file}' not found! Please check the remote storage status!"
-  ); _mail "${msg[@]}"; _gitlab "${msg[@]}"; _msg "${msg[0]}" "${msg[2]}"
+  ); _msg "${msg[@]}"
 }
 
 function fs_backup() {
@@ -190,8 +199,7 @@ function fs_backup() {
 
   for i in "${!FS_SRC[@]}"; do [[ -e "${FS_SRC[i]}" ]] || unset 'FS_SRC[i]'; done
   [[ ! -d "${dst}" ]] && mkdir -p "${dst}"; cd "${dst}" || _msg "${msg[0]}" "Directory '${dst}' not found!"
-  { { tar -cf - "${FS_SRC[@]}" | xz | _enc "${dst}/${file}"; } && _sum "${dst}/${file}"; } \
-    || { _mail "${msg[@]}"; _gitlab "${msg[@]}"; _msg "${msg[0]}" "${msg[2]}"; }
+  { { tar -cf - "${FS_SRC[@]}" | xz | _enc "${dst}/${file}"; } && _sum "${dst}/${file}"; } || _msg "${msg[@]}"
 }
 
 function fs_sync() {
@@ -203,7 +211,7 @@ function fs_sync() {
     'Error synchronizing with remote storage!'
   )
 
-  _rsync "${FS_DST}" "${RSYNC_DST}" || { _mail "${msg[@]}"; _gitlab "${msg[@]}"; _msg "${msg[0]}" "${msg[2]}"; }
+  _rsync "${FS_DST}" "${RSYNC_DST}" || _msg "${msg[@]}"
 }
 
 function fs_clean() {
