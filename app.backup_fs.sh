@@ -166,7 +166,7 @@ function fs_mount() {
     "Error mounting SSH FS to '${SSH_MNT}'!"
   )
 
-  _ssh "${SSH_DST}" "${SSH_MNT}" || { _mail "${msg[@]}"; _gitlab "${msg[@]}"; _msg 'error' "${msg[2]}"; }
+  _ssh "${SSH_DST}" "${SSH_MNT}" || { _mail "${msg[@]}"; _gitlab "${msg[@]}"; _msg "${msg[0]}" "${msg[2]}"; }
 }
 
 function fs_check() {
@@ -175,7 +175,7 @@ function fs_check() {
     'error'
     "File '${file}' not found!"
     "File '${file}' not found! Please check the remote storage status!"
-  ); _mail "${msg[@]}"; _gitlab "${msg[@]}"; _msg 'error' "${msg[2]}"
+  ); _mail "${msg[@]}"; _gitlab "${msg[@]}"; _msg "${msg[0]}" "${msg[2]}"
 }
 
 function fs_backup() {
@@ -189,9 +189,9 @@ function fs_backup() {
   )
 
   for i in "${!FS_SRC[@]}"; do [[ -e "${FS_SRC[i]}" ]] || unset 'FS_SRC[i]'; done
-  [[ ! -d "${dst}" ]] && mkdir -p "${dst}"; cd "${dst}" || _msg 'error' "Directory '${dst}' not found!"
+  [[ ! -d "${dst}" ]] && mkdir -p "${dst}"; cd "${dst}" || _msg "${msg[0]}" "Directory '${dst}' not found!"
   { tar -cf - "${FS_SRC[@]}" | xz | _enc "${dst}/${file}" && _sum "${dst}/${file}"; } \
-    || _mail "${msg[@]}"; _gitlab "${msg[@]}"; _msg 'error' "${msg[2]}"
+    || { _mail "${msg[@]}"; _gitlab "${msg[@]}"; _msg "${msg[0]}" "${msg[2]}"; }
 }
 
 function fs_sync() {
@@ -203,7 +203,7 @@ function fs_sync() {
     'Error synchronizing with remote storage!'
   )
 
-  _rsync "${FS_DST}" "${RSYNC_DST}" || { _mail "${msg[@]}"; _gitlab "${msg[@]}"; _msg 'error' "${msg[2]}"; }
+  _rsync "${FS_DST}" "${RSYNC_DST}" || { _mail "${msg[@]}"; _gitlab "${msg[@]}"; _msg "${msg[0]}" "${msg[2]}"; }
 }
 
 function fs_clean() {
