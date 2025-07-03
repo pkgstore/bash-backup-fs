@@ -198,7 +198,7 @@ function fs_backup() {
   )
 
   for i in "${!FS_SRC[@]}"; do [[ -e "${FS_SRC[i]}" ]] || unset 'FS_SRC[i]'; done
-  [[ ! -d "${dst}" ]] && mkdir -p "${dst}"; cd "${dst}" || _msg "${msg[0]}" "Directory '${dst}' not found!"
+  [[ ! -d "${dst}" ]] && mkdir -p "${dst}"; cd "${dst}" || _error "Directory '${dst}' not found!"
   { { tar -cf - "${FS_SRC[@]}" | xz | _enc "${dst}/${file}"; } && _sum "${dst}/${file}"; } || _msg "${msg[@]}"
 }
 
