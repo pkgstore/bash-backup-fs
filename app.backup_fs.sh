@@ -107,7 +107,7 @@ function _gitlab() {
 {
   "title": "${title}",
   "description": "${desc//\'/\`}\n\n---\n\n- \`${id^^}\`\n- \`${ip^^}\`\n- \`${date^^}\`\n- \`${type^^}\`",
-  "labels": "backup,database,${label}"
+  "labels": "backup,filesystem,${label}"
 }
 EOF
 }
