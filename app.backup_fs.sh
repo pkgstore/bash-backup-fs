@@ -169,22 +169,22 @@ function _rsync() {
 function fs_mount() {
   (( ! "${SSH_ON}" )) && return 0
 
-  local msg; msg=(
+  local msg_e; msg_e=(
     'error'
     'Error mounting SSH FS!'
     "Error mounting SSH FS to '${SSH_MNT}'!"
   )
 
-  _ssh "${SSH_DST}" "${SSH_MNT}" || _msg "${msg[@]}"
+  _ssh "${SSH_DST}" "${SSH_MNT}" || _msg "${msg_e[@]}"
 }
 
 function fs_check() {
   local file; file="${FS_DST}/.backup_fs"; [[ -f "${file}" ]] && return 0
-  local msg; msg=(
+  local msg_e; msg_e=(
     'error'
     "File '${file}' not found!"
     "File '${file}' not found! Please check the remote storage status!"
-  ); _msg "${msg[@]}"
+  ); _msg "${msg_e[@]}"
 }
 
 function fs_backup() {
@@ -211,13 +211,18 @@ function fs_backup() {
 function fs_sync() {
   (( ! "${RSYNC_ON}" )) && return 0
 
-  local msg; msg=(
+  local msg_e; msg_e=(
     'error'
     'Error synchronizing with remote storage'
     'Error synchronizing with remote storage!'
   )
+  local msg_s; msg_s=(
+    'success'
+    'Synchronization with remote storage completed successfully'
+    'Synchronization with remote storage completed successfully.'
+  )
 
-  _rsync "${FS_DST}" "${RSYNC_DST}" || _msg "${msg[@]}"
+  { _rsync "${FS_DST}" "${RSYNC_DST}" && _msg "${msg_s[@]}"; } || _msg "${msg_e[@]}"
 }
 
 function fs_clean() {
