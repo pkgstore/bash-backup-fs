@@ -191,15 +191,21 @@ function fs_backup() {
   local ts; ts="$( date -u '+%m.%d-%H' )"
   local dst; dst="${FS_DST}/${FS_TPL}"
   local file; file="$( hostname -f ).${ts}.tar.xz"
-  local msg; msg=(
+  local msg_e; msg_e=(
     'error'
     "Error backing up files ('${file}')"
     "Error backing up files ('${file}')! File '${dst}/${file}' not received or corrupted!"
   )
+  local msg_s; msg_s=(
+    'success'
+    "Backup of files ('${file}') completed successfully"
+    "Backup of files ('${file}') completed successfully. File '${dst}/${file}' received."
+  )
 
   for i in "${!FS_SRC[@]}"; do [[ -e "${FS_SRC[i]}" ]] || unset 'FS_SRC[i]'; done
   [[ ! -d "${dst}" ]] && mkdir -p "${dst}"; cd "${dst}" || _error "Directory '${dst}' not found!"
-  { { tar -cf - "${FS_SRC[@]}" | xz | _enc "${dst}/${file}"; } && _sum "${dst}/${file}"; } || _msg "${msg[@]}"
+  { { { tar -cf - "${FS_SRC[@]}" | xz | _enc "${dst}/${file}"; } && _sum "${dst}/${file}"; } && _msg "${msg_s[@]}"; } \
+    || _msg "${msg_e[@]}"
 }
 
 function fs_sync() {
