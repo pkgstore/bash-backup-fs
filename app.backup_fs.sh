@@ -123,7 +123,7 @@ function _msg() {
 }
 
 function _gpg() {
-  gpg --batch --passphrase "${2}" --symmetric --output "${1}.gpg" \
+  gpg --batch --yes --passphrase "${2}" --symmetric --output "${1}.gpg" \
     --s2k-cipher-algo "${ENC_S2K_CIPHER:-AES256}" \
     --s2k-digest-algo "${ENC_S2K_DIGEST:-SHA512}" \
     --s2k-count "${ENC_S2K_COUNT:-65536}"
